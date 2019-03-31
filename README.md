@@ -3,6 +3,10 @@
 
 Vysledky pomocou softmaxu (4 triedy)
 
+
+<img width="389" alt="accuracy" src="https://user-images.githubusercontent.com/34098041/55283098-0c951a80-5353-11e9-9d39-5a44e18b6f43.png">
+
+
 Epoch 1/25
 114/114 [==============================] - 27s 238ms/step - loss: 0.6227 - acc: 0.7703 - val_loss: 4.5628 - val_acc: 0.4899
 Epoch 2/25
