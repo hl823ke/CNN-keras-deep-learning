@@ -14,6 +14,7 @@ from keras_preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model, np_utils
 import matplotlib.pyplot as plt
 
+
 #Initialize the CNN
 
 classifier =  Sequential()
@@ -45,7 +46,7 @@ classifier.add(Flatten())
 #hidden layer
 # 128 needed experiments to decide correct number
 classifier.add(Dense(output_dim = 128, activation='relu'))
-classifier.add(Dense(output_dim = 2, activation='softmax'))
+classifier.add(Dense(output_dim = 4, activation='softmax'))
 
 
 
@@ -62,12 +63,32 @@ training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desk
 
 test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Test', target_size= (64,64), batch_size=32, class_mode='categorical')
 
-classifier.fit_generator(
+history = classifier.fit_generator(
     training_set,
-    samples_per_epoch = 1890,
-    nb_epoch= 5,
+    samples_per_epoch = 3661,
+    nb_epoch= 25,
     validation_data= test_set,
-    nb_val_samples= 472
+    nb_val_samples= 915
 )
 
-plot_model(classifier, to_file='model.png')
+import matplotlib.pyplot as plt
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(1, len(loss) + 1)
+plt.plot(epochs, loss, color='red', label='Training loss')
+plt.plot(epochs, val_loss, color='green', label='Validation loss')
+plt.title('Training and validation loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+acc = history.history['acc']
+val_acc = history.history['val_acc']
+plt.plot(epochs, acc, color='red', label='Training acc')
+plt.plot(epochs, val_acc, color='green', label='Validation acc')
+plt.title('Training and validation accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
