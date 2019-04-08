@@ -66,10 +66,32 @@ test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/D
 history = classifier.fit_generator(
     training_set,
     samples_per_epoch = 3661,
-    nb_epoch= 25,
+    nb_epoch= 15,
     validation_data= test_set,
     nb_val_samples= 915
 )
+
+test_set.reset()
+
+predIdxs = classifier.predict_generator(test_set,steps=(915 // 32) + 1)
+predIdxs = np.argmax(predIdxs, axis=1)
+
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix
+# show a nicely formatted classification report
+print(classification_report(test_set.classes, predIdxs,target_names=test_set.class_indices.keys()))
+
+cm = confusion_matrix(test_set.classes, predIdxs)
+total = sum(sum(cm))
+acc = (cm[0, 0] + cm[1, 1]) / total
+sensitivity = cm[0, 0] / (cm[0, 0] + cm[0, 1])
+specificity = cm[1, 1] / (cm[1, 0] + cm[1, 1])
+print(cm)
+print("acc: {:.4f}".format(acc))
+print("sensitivity: {:.4f}".format(sensitivity))
+print("specificity: {:.4f}".format(specificity))
+
+
 
 import matplotlib.pyplot as plt
 loss = history.history['loss']
