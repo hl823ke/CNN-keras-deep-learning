@@ -13,7 +13,8 @@ from keras.layers import Dense
 from keras_preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model, np_utils
 import matplotlib.pyplot as plt
-
+import numpy as np
+import keras_metrics as km
 
 #Initialize the CNN
 
@@ -25,7 +26,11 @@ classifier =  Sequential()
 # we use rectifire activation function
 classifier.add(Convolution2D(32, 3, 3, input_shape=(64,64,3), activation='relu'))
 classifier.add(MaxPooling2D(pool_size=(2,2)))
-classifier.add(BatchNormalization())
+classifier.add(Dropout(0.2))
+classifier.add(Convolution2D(64, 3, 3, input_shape=(64,64,3), activation='relu'))
+classifier.add(MaxPooling2D(pool_size=(2,2)))
+classifier.add(Dropout(0.2))
+classifier.add(Convolution2D(194, 3, 3, input_shape=(64,64,3), activation='relu'))
 classifier.add(MaxPooling2D(pool_size=(2,2)))
 classifier.add(Dropout(0.2))
 
@@ -45,40 +50,49 @@ classifier.add(Flatten())
 #4 Full connection
 #hidden layer
 # 128 needed experiments to decide correct number
-classifier.add(Dense(output_dim = 128, activation='relu'))
+classifier.add(Dense(output_dim = 194, activation='relu'))
+classifier.add(Dropout(0.5))
 classifier.add(Dense(output_dim = 4, activation='softmax'))
 
-
-
+recall = km.binary_recall(label=0)
+precision = km.binary_precision(label=1)
+c_precision = km.categorical_precision()
+sc_precision = km.sparse_categorical_precision()
 #5 compile the CNN
-classifier.compile(optimizer= 'Adam', loss = 'categorical_crossentropy', metrics = ['accuracy'])
+classifier.compile(optimizer= 'Adam', loss = 'categorical_crossentropy', metrics = [c_precision, 'accuracy', sc_precision, recall, precision])
 
 #Image augmentation. Do this?
 
 train_datagen = ImageDataGenerator(rescale=1./255,shear_range=0.2,zoom_range=0.2,horizontal_flip=False)
 
 test_datagen = ImageDataGenerator(rescale=1./255)
+validation_datagen = ImageDataGenerator(rescale=1./255)
 
 training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Train',target_size=(64,64),batch_size=32,class_mode='categorical')
 
-test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Test', target_size= (64,64), batch_size=32, class_mode='categorical')
+validation_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Validation',target_size=(64,64),batch_size=32,class_mode='categorical')
+
+test_set = validation_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Test', target_size= (64,64), batch_size=32, class_mode='categorical')
+#validation_set = validation_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/transfer_learning/dataset1/validation', target_size= (64,64), batch_size=32, class_mode='categorical')
 
 history = classifier.fit_generator(
     training_set,
     samples_per_epoch = 3661,
-    nb_epoch= 15,
-    validation_data= test_set,
+    nb_epoch= 200,
+    validation_data= validation_set,
     nb_val_samples= 915
 )
+classifier.summary()
 
 test_set.reset()
 
-predIdxs = classifier.predict_generator(test_set,steps=(915 // 32) + 1)
+predIdxs = classifier.predict_generator(test_set,steps=(459 // 32) + 1)
 predIdxs = np.argmax(predIdxs, axis=1)
 
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 # show a nicely formatted classification report
+
 print(classification_report(test_set.classes, predIdxs,target_names=test_set.class_indices.keys()))
 
 cm = confusion_matrix(test_set.classes, predIdxs)
@@ -107,9 +121,11 @@ plt.show()
 
 acc = history.history['acc']
 val_acc = history.history['val_acc']
-plt.plot(epochs, acc, color='red', label='Training acc')
+val_precision = history.history['val_precision']
+plt.plot(epochs, acc, color='blue', label='Training acc')
 plt.plot(epochs, val_acc, color='green', label='Validation acc')
-plt.title('Training and validation accuracy')
+plt.plot(epochs, val_precision, color='red', label='Precision acc')
+plt.title('Training and validation accuracy/precision')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.legend()
