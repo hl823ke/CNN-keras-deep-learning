@@ -15,6 +15,18 @@ from keras.utils import plot_model, np_utils
 import matplotlib.pyplot as plt
 import numpy as np
 import keras_metrics as km
+import split_folders
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from sklearn import datasets
+ 
+print('[INFO] loading MNIST full dataset...')
+dataset = datasets.fetch_mldata("MNIST Original")
+ 
+(trainX, testX, trainY, testY) = train_test_split(data, dataset.target, test_size=0.25)
+
+split_folders.ratio('/Users/haikristianlethanh/Desktop/FIRST_Data', output="/Users/haikristianlethanh/Desktop/SplitedData", seed=1337, ratio=(.8, .1, .1))
 
 #Initialize the CNN
 
@@ -58,6 +70,8 @@ recall = km.binary_recall(label=0)
 precision = km.binary_precision(label=1)
 c_precision = km.categorical_precision()
 sc_precision = km.sparse_categorical_precision()
+
+c_precision, 'accuracy', sc_precision, recall, precision
 #5 compile the CNN
 classifier.compile(optimizer= 'Adam', loss = 'categorical_crossentropy', metrics = [c_precision, 'accuracy', sc_precision, recall, precision])
 
@@ -68,31 +82,53 @@ train_datagen = ImageDataGenerator(rescale=1./255,shear_range=0.2,zoom_range=0.2
 test_datagen = ImageDataGenerator(rescale=1./255)
 validation_datagen = ImageDataGenerator(rescale=1./255)
 
-training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Train',target_size=(64,64),batch_size=32,class_mode='categorical')
+training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/SplitedData/train',target_size=(64,64),batch_size=32,class_mode='categorical')
 
-validation_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Validation',target_size=(64,64),batch_size=32,class_mode='categorical')
+validation_set = validation_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/SplitedData/val',target_size=(64,64),batch_size=32,class_mode='categorical')
 
-test_set = validation_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/Dataset/Test', target_size= (64,64), batch_size=32, class_mode='categorical')
+test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/SplitedData/test', target_size= (64,64), batch_size=64, class_mode='categorical')
 #validation_set = validation_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/DP/transfer_learning/dataset1/validation', target_size= (64,64), batch_size=32, class_mode='categorical')
 
 history = classifier.fit_generator(
     training_set,
-    samples_per_epoch = 3661,
-    nb_epoch= 200,
+    samples_per_epoch = 3660,
+    nb_epoch= 20,
     validation_data= validation_set,
     nb_val_samples= 915
 )
 classifier.summary()
+classifier.metrics_names
+classifier.evaluate_generator(training_set,steps=461, pickle_safe=True )
 
-test_set.reset()
-
-predIdxs = classifier.predict_generator(test_set,steps=(459 // 32) + 1)
+classifier.predict_generator(test_set, steps=(461 // 32) + 1)
+predIdxs = classifier.predict_generator(test_set,steps=(461 // 64) + 1)
 predIdxs = np.argmax(predIdxs, axis=1)
+predIdxs
+test_set.classes
+from sklearn.metrics import accuracy_score
+print("Accuracy score: ", accuracy_score(predIdxs, test_set.classes))
+
+
+test_imgs, test_labels = next(test_set)
+test_labels = test_labels[:,0]
+test_labels
+filenames = test_set.filenames
+len(filenames)
+nb_samples = len(filenames)
+predIdxs = classifier.predict_generator(test_set,steps=(461 // 32) + 1)
+
+test_set
+test_set.class_indices.keys()
+predIdxs = np.argmax(predIdxs, axis=1)
+
+from sklearn.metrics import accuracy_score
+print("Accuracy score: ", accuracy_score(predIdxs, test_set.class_indices.keys()))
+print("Accuracy score: ", accuracy_score(predIdxs, test_set.classes))
 
 from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 # show a nicely formatted classification report
-
+test_set.classes
 print(classification_report(test_set.classes, predIdxs,target_names=test_set.class_indices.keys()))
 
 cm = confusion_matrix(test_set.classes, predIdxs)
@@ -119,12 +155,15 @@ plt.ylabel('Loss')
 plt.legend()
 plt.show()
 
+
 acc = history.history['acc']
 val_acc = history.history['val_acc']
-val_precision = history.history['val_precision']
+val_precision_cat = history.history['precision']
+val_precision_bin = history.history['val_precision_2']
 plt.plot(epochs, acc, color='blue', label='Training acc')
 plt.plot(epochs, val_acc, color='green', label='Validation acc')
-plt.plot(epochs, val_precision, color='red', label='Precision acc')
+plt.plot(epochs, val_precision_bin, color='red', label='Val precision bin')
+plt.plot(epochs, val_precision_cat, color='purple', label='Val precision cat')
 plt.title('Training and validation accuracy/precision')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
