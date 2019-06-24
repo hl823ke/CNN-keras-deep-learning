@@ -11,11 +11,13 @@ from sklearn import datasets
 import keras_metrics as km
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import split_folders
 import shutil
 
 seedNumbers = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
-
+test_dir_name = '/Users/haikristianlethanh/Desktop/test/val'
+train_dir_name = '/Users/haikristianlethanh/Desktop/test/train'
 def trainingLoss():
     loss = history.history['loss']
     epochs = range(1, len(loss) + 1)
@@ -28,7 +30,8 @@ def trainingLoss():
 
 def metrics():
     test_set.reset()
-    Y_pred = classifier.predict_generator(test_set,steps=(461 // 32) + 1)
+    numfiles = sum([len(files) for r, d, files in os.walk(test_dir_name)])
+    Y_pred = classifier.predict_generator(test_set,steps=(numfiles // 32) + 1)
     classes = test_set.classes[test_set.index_array]
     classes
     test_set.classes
@@ -76,7 +79,8 @@ for i in seedNumbers:
     training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/test/train',target_size=(64,64),batch_size=32,class_mode='categorical')
     test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/test/val', target_size= (64,64), batch_size=32, class_mode='categorical', shuffle=False)
     ## train model
-    history = classifier.fit_generator(training_set, samples_per_epoch=3660, nb_epoch=2, nb_val_samples=455)   
+    numfiles = sum([len(files) for r, d, files in os.walk(train_dir_name)])
+    history = classifier.fit_generator(training_set, samples_per_epoch=numfiles, nb_epoch=20)   
     ## summary
     trainingLoss()
     metrics()
