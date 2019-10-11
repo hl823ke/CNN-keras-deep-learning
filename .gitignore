@@ -1,0 +1,5 @@
+*.jpg
+.noworkflow/
+datasets/
+galaxynetimagesearch/
+.ipynb_checkpoints/

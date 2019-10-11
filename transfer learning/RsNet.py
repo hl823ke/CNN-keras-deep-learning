@@ -82,7 +82,7 @@ training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desk
 test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/test/val', target_size= (64,64), batch_size=32, class_mode='categorical', shuffle=False)
 ## train model
 numfiles = sum([len(files) for r, d, files in os.walk(train_dir_name)])
-history = model.fit_generator(training_set, samples_per_epoch=numfiles, nb_epoch=1)   
+history = model.fit_generator(training_set, samples_per_epoch=numfiles, nb_epoch=5)   
 ## summary
 trainingLoss()
 
