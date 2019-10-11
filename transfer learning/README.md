@@ -14,21 +14,9 @@ Epoch 4/5
 Epoch 5/5
 114/114 [==============================] - 178s 2s/step - loss: 0.1425 - precision: 0.9528 - acc: 0.9531 - recall: 0.9498 - precision_1: 0.9787  
 
-<img src="training-loss.png">
+<img src="training-loss.png">  
 
 
-Accuracy score:  0.9541484716157205
-[[231   0   6  13]
-[  0 219   1   3]
-[  1   0 216   5]
-[  9   0   4 208]]
-precision    recall  f1-score   support
+<img src="accuracy.png">
 
-BENT       0.96      0.92      0.94       250
-COMP       1.00      0.98      0.99       223
-FRI       0.95      0.97      0.96       222
-FRII       0.91      0.94      0.92       221
 
-micro avg       0.95      0.95      0.95       916
-macro avg       0.95      0.96      0.95       916
-weighted avg       0.95      0.95      0.95       916
