@@ -77,12 +77,12 @@ model.metrics_names
     
 ## load dataset
 test_datagen = ImageDataGenerator()
-train_datagen = ImageDataGenerator()
+train_datagen = ImageDataGenerator(horizontal_flip=True, vertical_flip=True, height_shift_range=0.40, width_shift_range=[0,0.3])
 training_set = train_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/test/train',target_size=(64,64),batch_size=32,class_mode='categorical')
 test_set = test_datagen.flow_from_directory('/Users/haikristianlethanh/Desktop/test/val', target_size= (64,64), batch_size=32, class_mode='categorical', shuffle=False)
 ## train model
 numfiles = sum([len(files) for r, d, files in os.walk(train_dir_name)])
-history = model.fit_generator(training_set, samples_per_epoch=numfiles, nb_epoch=5)   
+history = model.fit_generator(training_set, samples_per_epoch=numfiles, nb_epoch=20)   
 ## summary
 trainingLoss()
 
