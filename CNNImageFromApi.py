@@ -12,6 +12,8 @@ import json
 import pyvo as vo
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
+from astropy import units as u
+from astropy.coordinates import Angle
 from skimage.transform import resize
 from skimage.transform import rescale
 import PIL.Image as Image
@@ -21,6 +23,8 @@ from keras.optimizers import SGD, RMSprop, Adam
 pd.set_option('display.max_colwidth', -1)
 # do *not* show python warnings 
 import warnings
+# rom scipy.misc import imsave
+from matplotlib.pyplot import imsave
 warnings.filterwarnings('ignore')
 
 
@@ -32,6 +36,7 @@ def GetImage(ra,dec,sigma, fold):
 #         img_url = data_url[0].getdataurl()
 
         img=vo.imagesearch(url,pos=(ra, dec), size=0.1, format="image/fits")#, timeout=500)
+        print(img)
         dataurl= img[0].getdataurl()
         
         resp = requests.get(dataurl)#timeout = 120
@@ -68,6 +73,24 @@ def GetImage(ra,dec,sigma, fold):
     minval, maxval = img_clip.min(),img_clip.max()
     norm = img_clip - minval
     img = norm*(1./(maxval-minval))#.astype(np.uint8)
-    imsave(fold+str(ra)+'.png',img)
+    print(img)
+    imsave('/Users/haikristianlethanh/Desktop/Fetched/' + fold+str(ra)+'.png',img)
     return #img,dataurl#img
+
+gals_radio = pd.read_csv('/Users/haikristianlethanh/Downloads/kiko/katalog.csv', sep=';')
+df = pd.DataFrame(gals_radio)
+
+gals_radio[:6]
+t=0
+for i, cord in gals_radio[:6].iterrows():
+    t+=1
+    suradnice_RA = str(cord[0]) + 'h' + str(cord[1]) + 'm' + str(cord[2]) + 's'
+    suradnice_DEC = str(cord[3]) + '°' + str(cord[4]) + '′' + str(cord[2]) + '″'
+    ra = Angle(suradnice_RA)
+    dec = Angle(suradnice_DEC)
+    RA = ra.degree
+    DEC = dec.degree
+    print(t,': ', RA, DEC)
+    GetImage(RA, DEC, 3, 'FRI/')
+    
 
