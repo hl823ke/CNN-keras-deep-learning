@@ -82,7 +82,7 @@ df = pd.DataFrame(gals_radio)
 
 gals_radio[:6]
 t=0
-for i, cord in gals_radio[:6].iterrows():
+for i, cord in gals_radio[350a:10000].iterrows():
     t+=1
     suradnice_RA = str(cord[0]) + 'h' + str(cord[1]) + 'm' + str(cord[2]) + 's'
     suradnice_DEC = str(cord[3]) + '°' + str(cord[4]) + '′' + str(cord[2]) + '″'
