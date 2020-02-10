@@ -3,13 +3,19 @@ from keras.layers import  Convolution2D, Dropout, Conv2D, BatchNormalization, Gl
 from keras.applications.xception import Xception
 from keras_preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model, np_utils
+from keras.preprocessing.image import load_img, ImageDataGenerator, img_to_array
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score,confusion_matrix
 from sklearn import datasets
+import matplotlib.pyplot as plt
+
+from skimage import exposure
+from skimage.transform import match_histograms
 
 from PIL import Image
 from scipy.ndimage import zoom
+from astropy.stats import sigma_clip
 
 import keras_metrics as km
 import matplotlib.pyplot as plt
@@ -20,7 +26,6 @@ import shutil
 
 import cv2
 import glob, os, errno
-import Preprocess
 
 
 
@@ -28,9 +33,61 @@ seedNumbers = [2]
 batchSize = 32
 ##test_dir_name = '/Users/haikristianlethanh/Desktop/test/val'
 test_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY'
-train_dir_name = '/Users/haikristianlethanh/Desktop/test/train'
+##train_dir_name = '/Users/haikristianlethanh/Desktop/test/train'
+train_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/FIRST_Data'
 path_to_dataset = '/Users/haikristianlethanh/Desktop/FIRST_Data'
 splited_dir_path = '/Users/haikristianlethanh/Desktop/test'
+    
+
+downloalded = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/Test_downloaded/FRII/'
+reference_FRI = '/Users/haikristianlethanh/Desktop/FIRST_Data/113.98142_R165.jpg'
+transformed_data_target ='/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY/FRII/'
+
+
+def hist_match(source, template):
+    """
+    Adjust the pixel values of a grayscale image such that its histogram
+    matches that of a target image.
+    Code adapted from
+    http://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x
+    Arguments:
+    -----------
+        source: np.ndarray
+            Image to transform; the histogram is computed over the flattened
+            array
+        template: np.ndarray
+            Template image; can have different dimensions to source
+    Returns:
+    -----------
+        matched: np.ndarray
+            The transformed output image
+    """
+
+    oldshape = source.shape
+    source = source.ravel()
+    template = template.ravel()
+
+    # get the set of unique pixel values and their corresponding indices and
+    # counts
+    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True,
+                                            return_counts=True)
+    t_values, t_counts = np.unique(template, return_counts=True)
+
+    # take the cumsum of the counts and normalize by the number of pixels to
+    # get the empirical cumulative distribution functions for the source and
+    # template images (maps pixel value --> quantile)
+    s_quantiles = np.cumsum(s_counts).astype(np.float64)
+    s_quantiles /= s_quantiles[-1]
+    t_quantiles = np.cumsum(t_counts).astype(np.float64)
+    t_quantiles /= t_quantiles[-1]
+
+    # interpolate linearly to find the pixel values in the template image
+    # that correspond most closely to the quantiles in the source image
+    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+    return interp_t_values[bin_idx].reshape(oldshape)
+
+
 
 def clipped_zoom(img, zoom_factor, **kwargs):
     h, w = img.shape[:2]
@@ -74,19 +131,37 @@ def clipped_zoom(img, zoom_factor, **kwargs):
         out = img
     return out
 
+def adjust_gamma(image, gamma=1.0):
+	# build a lookup table mapping the pixel values [0, 255] to
+	# their adjusted gamma values
+	invGamma = 1.0 / gamma
+	table = np.array([((i / 255.0) ** invGamma) * 255
+		for i in np.arange(0, 256)]).astype("uint8")
+ 
+	# apply gamma correction using the lookup table
+	return cv2.LUT(image, table)
+
+
 def preproces_img(dir_images_path, dest_preprocessed):
     directory = os.fsencode(dir_images_path)
     for file in os.listdir(directory):
          filename = os.fsdecode(file)
-         path_to_file = path_to_dir + filename
+         path_to_file = downloalded + filename
          ##Nacitanie obrazku uz v GrayScale
-         grey_img = cv2.imread(path_to_file, cv2.IMREAD_GRAYSCALE)
-         #Uprava velkosti na 150x150
+         ##referenced_image = cv2.imread(path_to_file)
+         img = load_img(path_to_file, color_mode='grayscale')
+         img = img_to_array(img)
+         #grey_img = cv2.imread(path_to_file, cv2.IMREAD_GRAYSCALE)
+         #matched = match_histograms(grey_img, referenced_image)
+         #contrasted= adjust_gamma(grey_img, 0.6)
+         #matched = match_histograms(contrasted, referenced_image)
+         filtered_data = sigma_clip(img, sigma=3, maxiters=5)
          dim = (150, 150)
-         resized = cv2.resize(grey_img, dim, interpolation = cv2.INTER_AREA)
-         ##Nazoomovanie obrazku
+         resized = cv2.resize(filtered_data, dim, interpolation = cv2.INTER_AREA)
          zm2 = clipped_zoom(resized, 1.5)
+         print(dest_preprocessed + filename)  
          status = cv2.imwrite(dest_preprocessed + filename, zm2)
+         print(status)
          continue
  
 
@@ -103,11 +178,11 @@ def trainingLoss(history):
 def metrics(test_set, classifier):
     test_set.reset()
     numfiles = sum([len(files) for r, d, files in os.walk(test_dir_name)])
-    numfiles
-    Y_pred = classifier.predict_generator(test_set,steps=(numfiles // 32) + 1)
-    Y_pred.shape
+    print(numfiles)
+    Y_pred = classifier.predict_generator(test_set,steps=(numfiles // 32))
+    print(Y_pred.shape)
     classes = test_set.classes[test_set.index_array]
-    classes
+    print(classes)
     test_set.classes
     y_pred = np.argmax(Y_pred, axis=-1)
     print("Accuracy score: ", accuracy_score(y_pred, test_set.classes))
@@ -121,6 +196,8 @@ def initializeModel():
     classifier.add(Conv2D(32, (3, 3), input_shape=(64,64,3), activation='relu'))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
     classifier.add(Conv2D(64, (3, 3),input_shape=(64,64,3), activation='relu'))
+    classifier.add(MaxPooling2D(pool_size=(2,2)))
+    classifier.add(Conv2D(128, (3, 3),input_shape=(64,64,3), activation='relu'))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
     classifier.add(Dropout(0.2))
     classifier.add(Flatten())
@@ -137,15 +214,19 @@ def initializeModel():
 
 def main():   
     for i in seedNumbers:
-        #split_folders.ratio(path_to_dataset, output=splited_dir_path, seed=i, ratio=(.8, .2)) # default values
+        ##split_folders.ratio(path_to_dataset, output=splited_dir_path, seed=i, ratio=(.8, .2)) # default values
         classifier = initializeModel()
         numfiles = sum([len(files) for r, d, files in os.walk(path_to_dataset)])
-        
+# =============================================================================
+#         
+# =============================================================================
         train_datagen_1 = ImageDataGenerator(brightness_range=[1,1.5])
         train_datagen_2 = ImageDataGenerator(horizontal_flip=True)
+        train_datagen_3 = ImageDataGenerator(channel_shift_range=25, brightness_range=[0.2,0.8])
         
-        training_set_1 = train_datagen_1.flow_from_directory(path_to_dataset,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
-        training_set_2 = train_datagen_2.flow_from_directory(path_to_dataset,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
+        training_set_1 = train_datagen_1.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
+        training_set_2 = train_datagen_2.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
+        training_set_3 = train_datagen_3.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
         
         test_datagen = ImageDataGenerator()
         test_set = test_datagen.flow_from_directory(test_dir_name,
@@ -154,6 +235,7 @@ def main():
                                                     class_mode='categorical',
                                                     shuffle=False)
         
+
         
     # =============================================================================
     #     ## train model
@@ -162,6 +244,7 @@ def main():
        ##start = time.time()
         history = classifier.fit_generator(training_set_1, steps_per_epoch=numfiles/batchSize, nb_epoch=5)   
         history = classifier.fit_generator(training_set_2, steps_per_epoch=numfiles/batchSize, nb_epoch=5)   
+        history = classifier.fit_generator(training_set_3, steps_per_epoch=numfiles/batchSize, nb_epoch=10)   
         ##end = time.time()
         ##hours, rem = divmod(end-start, 3600)
         ##minutes, seconds = divmod(rem, 60)
@@ -174,12 +257,12 @@ def main():
     # =============================================================================
     #     ## remove splited dataset
     # =============================================================================
-        ##shutil.rmtree(splited_dir_path)
-        ##print('Removed')
+        shutil.rmtree(splited_dir_path)
+        print('Removed')
     
     
 
-main()
+##main()
 
 
  # =============================================================================
@@ -188,6 +271,6 @@ main()
  #          2. cielova dest upravenych snimkov. !!!!Cielovy priecinok musi byt vytvoreny
  # =============================================================================
  
-  #preproces_img('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/Test_downloaded/FRII/', '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY/FRII/')
+preproces_img(downloalded, transformed_data_target)
     
 

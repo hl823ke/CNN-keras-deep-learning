@@ -74,14 +74,20 @@ def GetImage(ra,dec,sigma, fold):
     norm = img_clip - minval
     img = norm*(1./(maxval-minval))#.astype(np.uint8)
     print(img)
-    imsave('/Users/haikristianlethanh/Desktop/Fetched/' + fold+str(ra)+'.png',img)
+    imsave('/Users/haikristianlethanh/Desktop/' + fold+str(ra)+'.png',img)
     return #img,dataurl#img
 
-gals_radio = pd.read_csv('/Users/haikristianlethanh/Downloads/kiko/katalog.csv', sep=';')
+gals_radio = pd.read_csv('/Users/haikristianlethanh/Desktop/suradnice.csv', sep=',')
 df = pd.DataFrame(gals_radio)
 
 gals_radio[:6]
 t=0
+
+for i, cord in gals_radio[:].iterrows():
+    RA, DEC = cord[0], cord[1]
+    GetImage(RA, DEC, 2, 'Comp/')
+    
+    
 for i, cord in gals_radio[350a:10000].iterrows():
     t+=1
     suradnice_RA = str(cord[0]) + 'h' + str(cord[1]) + 'm' + str(cord[2]) + 's'
