@@ -4,6 +4,7 @@ from keras.applications.xception import Xception
 from keras_preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model, np_utils
 from keras.preprocessing.image import load_img, ImageDataGenerator, img_to_array
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score,confusion_matrix
@@ -15,7 +16,7 @@ from skimage.transform import match_histograms
 
 from PIL import Image
 from scipy.ndimage import zoom
-from astropy.stats import sigma_clip
+from astropy.stats import sigma_clipped_stats
 
 import keras_metrics as km
 import matplotlib.pyplot as plt
@@ -28,20 +29,20 @@ import cv2
 import glob, os, errno
 
 
-
-seedNumbers = [2]
+seedNumbers = [2,3,5,7,11]
 batchSize = 32
-##test_dir_name = '/Users/haikristianlethanh/Desktop/test/val'
-test_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY'
-##train_dir_name = '/Users/haikristianlethanh/Desktop/test/train'
-train_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/FIRST_Data'
-path_to_dataset = '/Users/haikristianlethanh/Desktop/FIRST_Data'
+test_dir_name = '/Users/haikristianlethanh/Desktop/test/val'
+##test_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY'
+train_dir_name = '/Users/haikristianlethanh/Desktop/test/train'
+##train_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/FIRST_Data'
+path_to_dataset = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/data_untouch'
 splited_dir_path = '/Users/haikristianlethanh/Desktop/test'
-    
+presnost = []
 
-downloalded = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/Test_downloaded/FRII/'
+downloalded = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/Test_downloaded/COMP/'
 reference_FRI = '/Users/haikristianlethanh/Desktop/FIRST_Data/113.98142_R165.jpg'
-transformed_data_target ='/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY/FRII/'
+transformed_data_target ='/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY/COMP/'
+
 
 
 def hist_match(source, template):
@@ -141,7 +142,7 @@ def adjust_gamma(image, gamma=1.0):
 	# apply gamma correction using the lookup table
 	return cv2.LUT(image, table)
 
-
+from astropy.stats import sigma_clip
 def preproces_img(dir_images_path, dest_preprocessed):
     directory = os.fsencode(dir_images_path)
     for file in os.listdir(directory):
@@ -155,15 +156,17 @@ def preproces_img(dir_images_path, dest_preprocessed):
          #matched = match_histograms(grey_img, referenced_image)
          #contrasted= adjust_gamma(grey_img, 0.6)
          #matched = match_histograms(contrasted, referenced_image)
-         filtered_data = sigma_clip(img, sigma=3, maxiters=5)
+         ##filtered_data = sigma_clipped_stats(img, sigma=3))
+         filtered_data = sigma_clip(img, sigma=3)
          dim = (150, 150)
          resized = cv2.resize(filtered_data, dim, interpolation = cv2.INTER_AREA)
-         zm2 = clipped_zoom(resized, 1.5)
+         #zm2 = clipped_zoom(resized, 1.5)
          print(dest_preprocessed + filename)  
-         status = cv2.imwrite(dest_preprocessed + filename, zm2)
+         status = cv2.imwrite(dest_preprocessed + filename, resized)
          print(status)
          continue
- 
+     
+##preproces_img(downloalded, transformed_data_target) 
 
 def trainingLoss(history):
     loss = history.history['loss']
@@ -179,17 +182,19 @@ def metrics(test_set, classifier):
     test_set.reset()
     numfiles = sum([len(files) for r, d, files in os.walk(test_dir_name)])
     print(numfiles)
-    Y_pred = classifier.predict_generator(test_set,steps=(numfiles // 32))
+    Y_pred = classifier.predict_generator(test_set,steps=(numfiles // 32) + 1)
     print(Y_pred.shape)
     classes = test_set.classes[test_set.index_array]
     print(classes)
     test_set.classes
     y_pred = np.argmax(Y_pred, axis=-1)
-    print("Accuracy score: ", accuracy_score(y_pred, test_set.classes))
+    accuracy = accuracy_score(y_pred, test_set.classes)
+    print("Accuracy score: ", accuracy)
     y_pred
     cm = confusion_matrix(test_set.classes, y_pred)
     print(cm)
     print(classification_report(test_set.classes, y_pred,target_names=test_set.class_indices.keys()))
+    return accuracy
     
 def initializeModel():
     classifier =  Sequential()
@@ -197,7 +202,7 @@ def initializeModel():
     classifier.add(MaxPooling2D(pool_size=(2,2)))
     classifier.add(Conv2D(64, (3, 3),input_shape=(64,64,3), activation='relu'))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
-    classifier.add(Conv2D(128, (3, 3),input_shape=(64,64,3), activation='relu'))
+    classifier.add(Conv2D(194, (3, 3),input_shape=(64,64,3), activation='relu'))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
     classifier.add(Dropout(0.2))
     classifier.add(Flatten())
@@ -214,37 +219,35 @@ def initializeModel():
 
 def main():   
     for i in seedNumbers:
-        ##split_folders.ratio(path_to_dataset, output=splited_dir_path, seed=i, ratio=(.8, .2)) # default values
+        split_folders.ratio(path_to_dataset, output=splited_dir_path, seed=i, ratio=(.8, .2)) # default values
         classifier = initializeModel()
         numfiles = sum([len(files) for r, d, files in os.walk(path_to_dataset)])
+        classifier.save('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/first_train.hdf5')
+        classifier.save('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/second_train.hdf5')
+        checkpoint_callback1 = ModelCheckpoint('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/first_train.hdf5', monitor='loss', verbose=1, save_best_only=True, mode='min')
+        checkpoint_callback2 = ModelCheckpoint('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/second_train.hdf5', monitor='loss', verbose=1, save_best_only=True, mode='min')
 # =============================================================================
 #         
 # =============================================================================
         train_datagen_1 = ImageDataGenerator(brightness_range=[1,1.5])
-        train_datagen_2 = ImageDataGenerator(horizontal_flip=True)
-        train_datagen_3 = ImageDataGenerator(channel_shift_range=25, brightness_range=[0.2,0.8])
-        
+        train_datagen_2 = ImageDataGenerator(horizontal_flip=True,vertical_flip=True)
         training_set_1 = train_datagen_1.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
         training_set_2 = train_datagen_2.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
-        training_set_3 = train_datagen_3.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
-        
         test_datagen = ImageDataGenerator()
         test_set = test_datagen.flow_from_directory(test_dir_name,
                                                     target_size= (64,64),
                                                     batch_size=batchSize,
                                                     class_mode='categorical',
                                                     shuffle=False)
-        
-
-        
     # =============================================================================
     #     ## train model
     # =============================================================================
-        
-       ##start = time.time()
-        history = classifier.fit_generator(training_set_1, steps_per_epoch=numfiles/batchSize, nb_epoch=5)   
-        history = classifier.fit_generator(training_set_2, steps_per_epoch=numfiles/batchSize, nb_epoch=5)   
-        history = classifier.fit_generator(training_set_3, steps_per_epoch=numfiles/batchSize, nb_epoch=10)   
+        ##start = time.time()ak
+        history = classifier.fit_generator(training_set_1, steps_per_epoch=numfiles/batchSize, nb_epoch=100,  callbacks=[checkpoint_callback1])  
+        classifier.load_weights("/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/first_train.hdf5")
+        trainingLoss(history)
+        history = classifier.fit_generator(training_set_2, steps_per_epoch=numfiles/batchSize, nb_epoch=100, callbacks=[checkpoint_callback2])   
+        classifier.load_weights("/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/second_train.hdf5")
         ##end = time.time()
         ##hours, rem = divmod(end-start, 3600)
         ##minutes, seconds = divmod(rem, 60)
@@ -253,24 +256,25 @@ def main():
     #     ## summary
     # =============================================================================
         trainingLoss(history)
-        metrics(test_set, classifier)
+        acc_av= metrics(test_set, classifier)
+        classifier.save('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/models2/'+ str(acc_av) +'model.hdf5')
+        presnost.append(metrics(test_set, classifier))
     # =============================================================================
     #     ## remove splited dataset
     # =============================================================================
         shutil.rmtree(splited_dir_path)
         print('Removed')
     
-    
-
-##main()
 
 
+main()
+##
  # =============================================================================
  #     ## Spustat len pri potrebe upravit data
  #          1. cesta k priecinku s neupravenymi obrazkamy
  #          2. cielova dest upravenych snimkov. !!!!Cielovy priecinok musi byt vytvoreny
  # =============================================================================
  
-preproces_img(downloalded, transformed_data_target)
+## preproces_img(downloalded, transformed_data_target)
     
 
