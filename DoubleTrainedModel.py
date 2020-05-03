@@ -1,208 +1,151 @@
-from keras.models import Sequential, Model
-from keras.layers import  Convolution2D, Dropout, Conv2D, BatchNormalization, GlobalAveragePooling2D,MaxPooling2D, Flatten, Dense
-from keras.applications.xception import Xception
+# =============================================================================
+#  Nacitanie potrebnych kniznic
+# =============================================================================
+from keras.models import Sequential
+from keras.layers import  Dropout, Conv2D, MaxPooling2D, Flatten, Dense
 from keras_preprocessing.image import ImageDataGenerator
-from keras.utils import plot_model, np_utils
-from keras.preprocessing.image import load_img, ImageDataGenerator, img_to_array
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.utils import plot_model
+from keras.preprocessing.image import load_img, img_to_array
+from keras.callbacks import ModelCheckpoint
 
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score,confusion_matrix
-from sklearn import datasets
-import matplotlib.pyplot as plt
-
-from skimage import exposure
-from skimage.transform import match_histograms
-
-from PIL import Image
-from scipy.ndimage import zoom
 from astropy.stats import sigma_clipped_stats
+from skimage.color import rgb2gray
+from skimage.transform import resize
 
-import keras_metrics as km
 import matplotlib.pyplot as plt
+import keras_metrics as km
 import numpy as np
 import os
 import split_folders
 import shutil
-
 import cv2
-import glob, os, errno
+import time;
 
-
+# =============================================================================
+#  Definovane globalne premenne
+# =============================================================================
 seedNumbers = [2,3,5,7,11]
 batchSize = 32
-test_dir_name = '/Users/haikristianlethanh/Desktop/test/val'
-##test_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY'
-train_dir_name = '/Users/haikristianlethanh/Desktop/test/train'
-##train_dir_name = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/FIRST_Data'
-path_to_dataset = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/data_untouch'
-splited_dir_path = '/Users/haikristianlethanh/Desktop/test'
+sigma = 3.0
+activation_conv = 'relu'
 presnost = []
 
-downloalded = '/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/Test_downloaded/COMP/'
-reference_FRI = '/Users/haikristianlethanh/Desktop/FIRST_Data/113.98142_R165.jpg'
-transformed_data_target ='/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/GREY/COMP/'
+# =============================================================================
+#  Definovane cesty v globalnych premennych premenne
+# =============================================================================
+test_dir_name = 'cesta k testovacej datovej mnozine'
+train_dir_name = 'cesta k trenovacej datovej mnozine'
+path_to_dataset = 'cesta k datasetu'
+splited_dir_path = 'cesta k adresaru, kde maju by ulozene rozdelene datove mnoziny'
+path_to_unprocessed = 'cesta k adresaru, s neupravenymi datami. Stale davame jednu triedu napr.  /data/COMP/!!'
+transformed_data_target ='cest k upravenemu datasetu napr. /data/COMP/'
+path_to_model = 'cesta k ulozeniu natrenovaneho klasifikatora'
+temp_fold = 'cesta k priecinku, kde sa ukladaju docasne subory. Po skonceni programu ich mozeme zmazat'
+
+
+#=============================================================================
+#   Pomocna funkcia sluziaca na odstránenie šumu pomocou hodnoty sigma.
+#   Táto funkcia vracia danému dátovému bodu hodnotu 0, ak je jeho intenzita nižšia ako hranica inak vrati hodnotu spat
+#   Vstup: hodnota pixlu a hranica
+#   Vystup: nova hodnota
+#=============================================================================
+def clip(data,lim):
+    data[data<lim] = 0.0
+    return data 
 
 
 
-def hist_match(source, template):
-    """
-    Adjust the pixel values of a grayscale image such that its histogram
-    matches that of a target image.
-    Code adapted from
-    http://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x
-    Arguments:
-    -----------
-        source: np.ndarray
-            Image to transform; the histogram is computed over the flattened
-            array
-        template: np.ndarray
-            Template image; can have different dimensions to source
-    Returns:
-    -----------
-        matched: np.ndarray
-            The transformed output image
-    """
 
-    oldshape = source.shape
-    source = source.ravel()
-    template = template.ravel()
-
-    # get the set of unique pixel values and their corresponding indices and
-    # counts
-    s_values, bin_idx, s_counts = np.unique(source, return_inverse=True,
-                                            return_counts=True)
-    t_values, t_counts = np.unique(template, return_counts=True)
-
-    # take the cumsum of the counts and normalize by the number of pixels to
-    # get the empirical cumulative distribution functions for the source and
-    # template images (maps pixel value --> quantile)
-    s_quantiles = np.cumsum(s_counts).astype(np.float64)
-    s_quantiles /= s_quantiles[-1]
-    t_quantiles = np.cumsum(t_counts).astype(np.float64)
-    t_quantiles /= t_quantiles[-1]
-
-    # interpolate linearly to find the pixel values in the template image
-    # that correspond most closely to the quantiles in the source image
-    interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
-
-    return interp_t_values[bin_idx].reshape(oldshape)
-
-
-
-def clipped_zoom(img, zoom_factor, **kwargs):
-    h, w = img.shape[:2]
-    # For multichannel images we don't want to apply the zoom factor to the RGB
-    # dimension, so instead we create a tuple of zoom factors, one per array
-    # dimension, with 1's for any trailing dimensions after the width and height.
-    zoom_tuple = (zoom_factor,) * 2 + (1,) * (img.ndim - 2)
-
-    # Zooming out
-    if zoom_factor < 1:
-
-        # Bounding box of the zoomed-out image within the output array
-        zh = int(np.round(h * zoom_factor))
-        zw = int(np.round(w * zoom_factor))
-        top = (h - zh) // 2
-        left = (w - zw) // 2
-
-        # Zero-padding
-        out = np.zeros_like(img)
-        out[top:top+zh, left:left+zw] = zoom(img, zoom_tuple, **kwargs)
-
-    # Zooming in
-    elif zoom_factor > 1:
-
-        # Bounding box of the zoomed-in region within the input array
-        zh = int(np.round(h / zoom_factor))
-        zw = int(np.round(w / zoom_factor))
-        top = (h - zh) // 2
-        left = (w - zw) // 2
-
-        out = zoom(img[top:top+zh, left:left+zw], zoom_tuple, **kwargs)
-
-        # `out` might still be slightly larger than `img` due to rounding, so
-        # trim off any extra pixels at the edges
-        trim_top = ((out.shape[0] - h) // 2)
-        trim_left = ((out.shape[1] - w) // 2)
-        out = out[trim_top:trim_top+h, trim_left:trim_left+w]
-
-    # If zoom_factor == 1, just return the input array
-    else:
-        out = img
-    return out
-
-def adjust_gamma(image, gamma=1.0):
-	# build a lookup table mapping the pixel values [0, 255] to
-	# their adjusted gamma values
-	invGamma = 1.0 / gamma
-	table = np.array([((i / 255.0) ** invGamma) * 255
-		for i in np.arange(0, 256)]).astype("uint8")
- 
-	# apply gamma correction using the lookup table
-	return cv2.LUT(image, table)
-
-from astropy.stats import sigma_clip
-def preproces_img(dir_images_path, dest_preprocessed):
-    directory = os.fsencode(dir_images_path)
+#=============================================================================
+#   Funkcia sluziaca na predspracovanie dat
+#   Vstup: cesta k priecinku s neupravenymi datami a cesta k datasetu s upravenymi datami
+#   Vystup: nova upravena datova mnozina
+#=============================================================================
+def preproces_img(path_to_unprocessed, dest_preprocessed):
+    #   Inicializacia priecinku
+    directory = os.fsencode(path_to_unprocessed)
+    #   Prechadzanie snimok v danom priecinku
     for file in os.listdir(directory):
-         filename = os.fsdecode(file)
-         path_to_file = downloalded + filename
-         ##Nacitanie obrazku uz v GrayScale
-         ##referenced_image = cv2.imread(path_to_file)
-         img = load_img(path_to_file, color_mode='grayscale')
-         img = img_to_array(img)
-         #grey_img = cv2.imread(path_to_file, cv2.IMREAD_GRAYSCALE)
-         #matched = match_histograms(grey_img, referenced_image)
-         #contrasted= adjust_gamma(grey_img, 0.6)
-         #matched = match_histograms(contrasted, referenced_image)
-         ##filtered_data = sigma_clipped_stats(img, sigma=3))
-         filtered_data = sigma_clip(img, sigma=3)
-         dim = (150, 150)
-         resized = cv2.resize(filtered_data, dim, interpolation = cv2.INTER_AREA)
-         #zm2 = clipped_zoom(resized, 1.5)
-         print(dest_preprocessed + filename)  
-         status = cv2.imwrite(dest_preprocessed + filename, resized)
-         print(status)
-         continue
+        #   Inicializacia filu
+        filename = os.fsdecode(file)
+        path_to_file = path_to_unprocessed + filename
+        img = load_img(path_to_file)
+        #   Prevod snimku na pole bodov
+        img = img_to_array(img)
+        #   Vypocet standardnej odchylky
+        mean, median, std = sigma_clipped_stats(img, sigma=sigma, maxiters=10)
+        #   Odstranenie sumu pomocou hodnoty sucinu sigma hodonty a standardnej odchylky
+        img = clip(img,std*sigma)   
+        #   Uprava rozmerov snimku
+        if img.shape[0] !=150 or img.shape[1] !=150:
+            img = resize(img, (150,150))
+        # Prevod snimku na gray scale
+        img = rgb2gray(img)  
+        status = cv2.imwrite(dest_preprocessed, img)
+        return status
+        continue
      
-##preproces_img(downloalded, transformed_data_target) 
-
+#=============================================================================
+#   Funkcia sluziaca na kontrolu ucenia
+#   Vstup: klasifikator
+#   Vystup: grafy celkovej uspesnosti a chyby ucenia
+#=============================================================================
 def trainingLoss(history):
-    loss = history.history['loss']
-    epochs = range(1, len(loss) + 1)
-    plt.plot(epochs, loss, color='red', label='Training loss')
-    plt.title('Training  loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
+    plt.title('')
+    plt.ylabel('celková úspešnosť')
+    plt.xlabel('počet epoch')
+    plt.legend(['trénovanie', 'validácia'], loc='upper left')
+    plt.show()
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('')
+    plt.ylabel('chyba')
+    plt.xlabel('počet epoch')
+    plt.legend(['trénovanie', 'validácia'], loc='upper left')
     plt.show()
 
+#=============================================================================
+#   Funkcia sluziaca na vyhodnotenie metrik klasifikatora na testovacej datovej mnozine
+#   Vstup: klasifikator
+#   Vystup: grafy celkovej uspesnosti a chyby ucenia
+#=============================================================================
 def metrics(test_set, classifier):
     test_set.reset()
     numfiles = sum([len(files) for r, d, files in os.walk(test_dir_name)])
     print(numfiles)
+    #   klasifikacia testovacej mnoziny
     Y_pred = classifier.predict_generator(test_set,steps=(numfiles // 32) + 1)
     print(Y_pred.shape)
+    #   skutocne triedy distribucie testovacej mnoziny
     classes = test_set.classes[test_set.index_array]
     print(classes)
     test_set.classes
     y_pred = np.argmax(Y_pred, axis=-1)
+    #   vypocet celkovej uspesnosti, presnosti klasifikacie
     accuracy = accuracy_score(y_pred, test_set.classes)
     print("Accuracy score: ", accuracy)
     y_pred
+    #   vypocet chybovej matice
     cm = confusion_matrix(test_set.classes, y_pred)
     print(cm)
     print(classification_report(test_set.classes, y_pred,target_names=test_set.class_indices.keys()))
     return accuracy
     
+#=============================================================================
+#   Funkcia sluziaca na inicializaciu modelu konvolucnej siete
+#   Vstup: 
+#   Vystup: Klasifikator
+#=============================================================================
 def initializeModel():
     classifier =  Sequential()
-    classifier.add(Conv2D(32, (3, 3), input_shape=(64,64,3), activation='relu'))
+    classifier.add(Conv2D(32, (3, 3), input_shape=(64,64,1), activation=activation_conv))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
-    classifier.add(Conv2D(64, (3, 3),input_shape=(64,64,3), activation='relu'))
+    classifier.add(Conv2D(64, (3, 3),input_shape=(64,64,1), activation=activation_conv))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
-    classifier.add(Conv2D(194, (3, 3),input_shape=(64,64,3), activation='relu'))
+    classifier.add(Conv2D(194, (3, 3),input_shape=(64,64,1), activation=activation_conv))
     classifier.add(MaxPooling2D(pool_size=(2,2)))
     classifier.add(Dropout(0.2))
     classifier.add(Flatten())
@@ -211,70 +154,85 @@ def initializeModel():
     recall = km.binary_recall(label=0)
     precision = km.binary_precision(label=1)
     c_precision = km.categorical_precision()
-    classifier.compile(optimizer= 'Adam', loss = 'categorical_crossentropy', metrics = [c_precision, 'accuracy', recall, precision])   
+    classifier.compile(optimizer= 'Adam', loss = 'categorical_crossentropy', metrics = [c_precision, 'accuracy', recall, precision, ])   
     classifier.summary()
     classifier.metrics_names
     return classifier
 
 
+#=============================================================================
+#   HLAVNA FUNKCIA
+#=============================================================================
 def main():   
+    #=============================================================================
+    #   Volanie funkcie predspracovania dat ak je potrebne data predspracovat
+    #=============================================================================
+    #  preproces_img(path_to_unprocessed, path_to_dataset)
+    
+    # Iteracia cez retazec seedov
     for i in seedNumbers:
+        #   Nahodne rozdelenie datovej mnoziny podla seedu
         split_folders.ratio(path_to_dataset, output=splited_dir_path, seed=i, ratio=(.8, .2)) # default values
+        #   Volanie funkcie, ktora nam vrati vytvoreny klasifikator
         classifier = initializeModel()
+        #   Zobrazenie parametrov modelu
+        plot_model(classifier, to_file='model.png', show_shapes=True, show_layer_names=True)
         numfiles = sum([len(files) for r, d, files in os.walk(path_to_dataset)])
-        classifier.save('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/first_train.hdf5')
-        classifier.save('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/second_train.hdf5')
-        checkpoint_callback1 = ModelCheckpoint('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/first_train.hdf5', monitor='loss', verbose=1, save_best_only=True, mode='min')
-        checkpoint_callback2 = ModelCheckpoint('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/second_train.hdf5', monitor='loss', verbose=1, save_best_only=True, mode='min')
-# =============================================================================
-#         
-# =============================================================================
+        #   Inicializacia suborov na ukladanie modelov
+        classifier.save(temp_fold + 'first_train.hdf5')
+        classifier.save(temp_fold + 'second_train.hdf5')
+        #   Nastavenie callbacku na hodnotu chyby. Tymto callbackom sledujeme vyvoj chybovej funkcie na trenovacej/validacnej mnozine, na zaklade ktorej ukladame model s jej minimalnou hodnotou
+        checkpoint_callback1 = ModelCheckpoint(temp_fold + 'first_train.hdf5', monitor='loss', verbose=1, save_best_only=True, mode='min')
+        checkpoint_callback2 = ModelCheckpoint(temp_fold + 'second_train.hdf5', monitor='loss', verbose=1, save_best_only=True, mode='min')
+        #   Inicializacia augmentacie dat a naciatnie trenovacej datovej mnoziny
         train_datagen_1 = ImageDataGenerator(brightness_range=[1,1.5])
         train_datagen_2 = ImageDataGenerator(horizontal_flip=True,vertical_flip=True)
-        training_set_1 = train_datagen_1.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
-        training_set_2 = train_datagen_2.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical')
-        test_datagen = ImageDataGenerator()
+        training_set_1 = train_datagen_1.flow_from_directory(train_dir_name,target_size=(64,64), batch_size=batchSize,class_mode='categorical',subset='training',color_mode ='grayscale')
+        training_set_2 = train_datagen_2.flow_from_directory(train_dir_name,target_size=(64,64),batch_size=batchSize,class_mode='categorical',color_mode ='grayscale')
+        #   Nacitanie validacnej a testovacej datovej mnoziny
+        test_datagen = ImageDataGenerator(validation_split=0.1)
+
         test_set = test_datagen.flow_from_directory(test_dir_name,
                                                     target_size= (64,64),
                                                     batch_size=batchSize,
                                                     class_mode='categorical',
-                                                    shuffle=False)
-    # =============================================================================
-    #     ## train model
-    # =============================================================================
-        ##start = time.time()ak
-        history = classifier.fit_generator(training_set_1, steps_per_epoch=numfiles/batchSize, nb_epoch=100,  callbacks=[checkpoint_callback1])  
-        classifier.load_weights("/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/first_train.hdf5")
+                                                    color_mode ='grayscale',
+                                                    shuffle=True)
+        validation_set_1 = test_datagen.flow_from_directory(test_dir_name,target_size=(64,64), batch_size=batchSize,class_mode='categorical',subset='validation',color_mode ='grayscale')
+    #=============================================================================
+    #   TRENOVANIE MODELU
+    #=============================================================================
+        start = time.time()
+        history = classifier.fit_generator(training_set_1,validation_data=validation_set_1, steps_per_epoch=numfiles/batchSize, nb_epoch=50, callbacks=[checkpoint_callback1])  
+        classifier.load_weights(temp_fold + "first_train.hdf5")
         trainingLoss(history)
-        history = classifier.fit_generator(training_set_2, steps_per_epoch=numfiles/batchSize, nb_epoch=100, callbacks=[checkpoint_callback2])   
-        classifier.load_weights("/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/second_train.hdf5")
-        ##end = time.time()
-        ##hours, rem = divmod(end-start, 3600)
-        ##minutes, seconds = divmod(rem, 60)
-        ##print("{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
-    # =============================================================================
-    #     ## summary
-    # =============================================================================
+        metrics(test_set, classifier)
+        history = classifier.fit_generator(training_set_2,validation_data=validation_set_1, steps_per_epoch=numfiles/batchSize, nb_epoch=50, callbacks=[checkpoint_callback2])   
+        classifier.load_weights(temp_fold + "second_train.hdf5")
+        end = time.time()
+        hours, rem = divmod(end-start, 3600)
+        minutes, seconds = divmod(rem, 60)
+        print("{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
+    #=============================================================================
+    #   TESTOVANIE MODELU
+    #=============================================================================
         trainingLoss(history)
+        start = time.time()
         acc_av= metrics(test_set, classifier)
-        classifier.save('/Users/haikristianlethanh/Desktop/CNN-keras-deep-learning/models2/'+ str(acc_av) +'model.hdf5')
+        end = time.time()
+        hours, rem = divmod(end-start, 3600)
+        minutes, seconds = divmod(rem, 60)
+        print("{:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds))
+        classifier.save(path_to_model + str(acc_av) +'model.hdf5')
         presnost.append(metrics(test_set, classifier))
     # =============================================================================
-    #     ## remove splited dataset
+    #     ## ODSTRANENIE NAHODNEHO ROZDELENIA
     # =============================================================================
         shutil.rmtree(splited_dir_path)
         print('Removed')
     
 
-
-main()
-##
- # =============================================================================
- #     ## Spustat len pri potrebe upravit data
- #          1. cesta k priecinku s neupravenymi obrazkamy
- #          2. cielova dest upravenych snimkov. !!!!Cielovy priecinok musi byt vytvoreny
- # =============================================================================
  
-## preproces_img(downloalded, transformed_data_target)
-    
+main()
+
 
